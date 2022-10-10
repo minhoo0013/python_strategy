@@ -16,8 +16,6 @@ import requests
 import datetime
 import pandas as pd
 import time
-import matplotlib.pyplot as plt
-import mplfinance as fplt
 import numpy as np
 
 class Position:
