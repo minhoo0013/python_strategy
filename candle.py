@@ -210,11 +210,6 @@ def get_data(start_date, end_date, symbol):
     df['trades'] = df['trades'].astype(int)
     return df
 
-start_date = '2021-09-12'
-end_date = '2022-10-10'
-binance = get_data(start_date, end_date, 'BTCUSDT')
-binance = binance.set_index('open_time')
-
 #%% 백테스트 실행
 def check_bundle_return(bundle_cnt, ret, *args):
     for i in range(bundle_cnt):
@@ -230,117 +225,6 @@ def check_bundle_return_up(bundle_cnt, ret, *args):
             return i
     return 0
 
-factor = {'candle_cnt': 3,
-          'bundle_cnt': 3,
-          'return1': -0.002,
-          'return2': -0.004,
-          'return3': -0.002,
-          'vol1': 10000,
-          'vol2': -0.004,
-          'vol3': -0.004,
-          'profit_cut': 0.0060,
-          'loss_cut': -0.0060,
-          'pre_bummping': 0.010,
-          'break_cnt': 3}
-
-candle = Candle(binance,'BTCUSDT','5M')
-buy_marker = []
-sell_marker = []
-
-size = binance.index.size
-i = factor['candle_cnt']*factor['bundle_cnt']
-trade_series = pd.Series(np.zeros(binance.index.size), index = binance.index)
-buy_amt = 0
-long_size = 0
-lots = 0.1
-win = 0
-lose = 0
-break_time = 0
-while i < size:
-    hit_cnt = 0
-    pivot = size-i
-    break_time -= 1
-    if break_time <= 0:
-        if candle.getVol(pivot+1) >= factor['vol1'] or candle.getVol(pivot+2) >= factor['vol1'] or  candle.getVol(pivot+3) >= factor['vol1'] or candle.getVol(pivot+4) >= factor['vol1'] or  candle.getVol(pivot+5) >= factor['vol1'] or candle.getVol(pivot+6) >= factor['vol1']:
-            checking = check_bundle_return(factor['bundle_cnt'],factor['return1'],candle.candleReturn(pivot+1),candle.candleReturn(pivot+2),candle.candleReturn(pivot+3))
-            if checking != 0:
-                checking_2 = check_bundle_return(factor['bundle_cnt'],factor['return1'],candle.candleReturn(pivot+1+checking),candle.candleReturn(pivot+2+checking),candle.candleReturn(pivot+3+checking))
-                if checking_2 != 0 :
-                    checking_3 = check_bundle_return(factor['bundle_cnt'],factor['return1'],candle.candleReturn(pivot+1+checking+checking_2),candle.candleReturn(pivot+2+checking+checking_2),candle.candleReturn(pivot+3+checking+checking_2))
-                    if checking_3 != 0:
-                        index = pivot+checking+checking_2+checking_3
-                        pre_bummping = check_bundle_return_up(8, factor['pre_bummping'], candle.candleReturn(index+1),candle.candleReturn(index+2),candle.candleReturn(index+3),candle.candleReturn(index+4),candle.candleReturn(index+5),candle.candleReturn(index+6),candle.candleReturn(index+7),candle.candleReturn(index+8))
-                        if pre_bummping == 0:
-                            buy_marker.append(candle.getIndex(pivot))
-                            long_size += lots
-                            buy_amt += lots * candle.getOpen(pivot)
-                            trade_series[candle.getIndex(pivot)] = lots
-                            i += 1
-                            break_time = 6
-                            continue
-        checking = check_bundle_return(factor['bundle_cnt'],factor['return2'],candle.candleReturn(pivot+1),candle.candleReturn(pivot+2),candle.candleReturn(pivot+3))
-        if checking != 0:
-            checking_2 = check_bundle_return(factor['bundle_cnt'],factor['return2'],candle.candleReturn(pivot+1+checking),candle.candleReturn(pivot+2+checking),candle.candleReturn(pivot+3+checking))
-            if checking_2 != 0 :
-                index = pivot+checking+checking_2
-                pre_bummping = check_bundle_return_up(8, factor['pre_bummping'], candle.candleReturn(index+1),candle.candleReturn(index+2),candle.candleReturn(index+3),candle.candleReturn(index+4),candle.candleReturn(index+5),candle.candleReturn(index+6),candle.candleReturn(index+7),candle.candleReturn(index+8))
-                if pre_bummping == 0:
-                    buy_marker.append(candle.getIndex(pivot))
-                    long_size += lots
-                    buy_amt += lots * candle.getOpen(pivot)
-                    trade_series[candle.getIndex(pivot)] = lots
-                    i += 1
-                    break_time = 6
-                    continue
-    if long_size > 0:
-        if (candle.getOpen(pivot) - buy_amt / long_size) / candle.getOpen(pivot) >= factor['profit_cut']:
-            sell_marker.append(candle.getIndex(pivot))
-            trade_series[candle.getIndex(pivot)] = -long_size
-            win +=1
-            buy_amt = 0
-            long_size = 0
-        elif (candle.getOpen(pivot) - buy_amt / long_size) / candle.getOpen(pivot) <= factor['loss_cut']:
-            sell_marker.append(candle.getIndex(pivot))
-            trade_series[candle.getIndex(pivot)] = -long_size
-            lose +=1
-            buy_amt = 0
-            long_size = 0
-    i += 1
-#%% 백테스트 결
-
-binance_buy = binance.filter(items = buy_marker, axis=0)['low']*0.999
-binance_buy = binance_buy.reindex(binance.index)
-
-binance_sell = binance.filter(items = sell_marker, axis=0)['high']*1.001
-binance_sell = binance_sell.reindex(binance.index)
-
-apd = [fplt.make_addplot(binance_buy, scatter=True, markersize=130, marker=r'$\Uparrow$', color='green'),
-       fplt.make_addplot(binance_sell, scatter=True, markersize=130, marker=r'$\Downarrow$', color='red')
-       ]
-
-fplt.plot(
-            binance,
-            type='candle',
-            style='charles',
-            title='BTCUSDT',
-            ylabel='Price',
-            volume=True,
-            ylabel_lower='valume',
-            addplot=apd
-            )
-
-#%%
-book = pd.DataFrame(np.zeros([binance.index.size,4]),index = binance.index,columns=['price_open','trade','eval_amt','cash'])
-book.trade = trade_series
-book.price_open = binance['open']
-book.eval_amt = book.trade.cumsum() * book.price_open
-book.cash = (book.trade * book.price_open * (-1)).cumsum()
-
-(book.cash + book.eval_amt).plot()
-
-
-
-#%%
 factor = {'interval': '5m',
           'candle_cnt': 3,
           'bundle_cnt': 3,
@@ -521,6 +405,8 @@ class ThreeDownInLowStrategy():
             
 #%%
 from binance.client import Client
+API_KEY = '5w9xo7fnmyVgjEKpArnplRhYN5dGgbj4RcXWSWIeXiXYeJcq20AZVmDlwjymLHBu'
+API_SECRET = input('insert secret key : ')
 client = Client(API_KEY, API_SECRET)
 
 symbol = 'BTCUSDT'
